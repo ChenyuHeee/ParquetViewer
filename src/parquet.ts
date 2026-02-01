@@ -15,6 +15,11 @@ export type ParquetSource =
   | { kind: 'file'; label: string; file: AsyncBuffer }
   | { kind: 'url'; label: string; file: AsyncBuffer; url: string }
 
+export type UrlCandidate = {
+  url: string
+  label: string
+}
+
 export type ParquetMeta = {
   numRows: number
   columns: string[]
@@ -36,11 +41,18 @@ export async function makeSourceFromUrl(url: string): Promise<ParquetSource> {
   return { kind: 'url', label: url, url, file }
 }
 
-export function normalizeParquetUrl(input: string): { url: string; note?: string } {
-  // Common case: GitHub file page URL ("blob") is HTML, not the raw bytes.
-  // Convert it to a raw.githubusercontent.com URL which is fetchable.
+export function normalizeParquetUrl(input: string): { candidates: UrlCandidate[]; note?: string } {
+  // Goals:
+  // - Support pasting GitHub file page links (blob) by converting to fetchable endpoints.
+  // - Handle Git LFS: raw.githubusercontent.com may return an LFS pointer; media.githubusercontent.com often serves the actual bytes.
+  // - Keep a fallback list to maximize chances of working under different CORS/Range behaviors.
+
+  const fallback = (url: string) => ({ candidates: [{ url, label: 'Direct URL' }] })
+
   try {
     const u = new URL(input)
+
+    // GitHub file page URLs
     if (u.hostname === 'github.com') {
       const parts = u.pathname.split('/').filter(Boolean)
       // /{owner}/{repo}/blob/{ref}/{path...}
@@ -50,27 +62,76 @@ export function normalizeParquetUrl(input: string): { url: string; note?: string
         const ref = parts[3]
         const path = parts.slice(4).join('/')
         return {
-          url: `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${path}`,
-          note: '已将 GitHub blob 链接转换为 raw 直链',
+          note: '检测到 GitHub 文件页面链接，将尝试可下载的直链（含 Git LFS 兼容）',
+          candidates: githubCandidates(owner, repo, ref, path),
         }
       }
-      // /{owner}/{repo}/raw/{ref}/{path...}
+      // /{owner}/{repo}/raw/{ref}/{path...} (sometimes provided by UI)
       if (parts.length >= 5 && parts[2] === 'raw') {
         const owner = parts[0]
         const repo = parts[1]
         const ref = parts[3]
         const path = parts.slice(4).join('/')
         return {
-          url: `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${path}`,
-          note: '已将 GitHub raw 链接标准化为 raw.githubusercontent.com',
+          note: '检测到 GitHub raw 链接，将标准化并尝试多种直链',
+          candidates: githubCandidates(owner, repo, ref, path),
         }
       }
+      return fallback(input)
     }
-    // Some users paste "?raw=1" URLs from GitHub UI; keep it as-is unless it's a blob link.
-    return { url: input }
+
+    // raw.githubusercontent.com URLs
+    if (u.hostname === 'raw.githubusercontent.com') {
+      const parts = u.pathname.split('/').filter(Boolean)
+      if (parts.length >= 4) {
+        const owner = parts[0]
+        const repo = parts[1]
+        const ref = parts[2]
+        const path = parts.slice(3).join('/')
+        return {
+          note: '检测到 raw.githubusercontent.com，将同时尝试 media 直链（兼容 Git LFS）',
+          candidates: [
+            { url: `https://media.githubusercontent.com/media/${owner}/${repo}/${ref}/${path}`, label: 'GitHub media (LFS-friendly)' },
+            { url: input, label: 'GitHub raw' },
+            { url: `https://cdn.jsdelivr.net/gh/${owner}/${repo}@${ref}/${path}`, label: 'jsDelivr CDN' },
+          ],
+        }
+      }
+      return fallback(input)
+    }
+
+    // media.githubusercontent.com URLs
+    if (u.hostname === 'media.githubusercontent.com') {
+      // /media/{owner}/{repo}/{ref}/{path...}
+      const parts = u.pathname.split('/').filter(Boolean)
+      if (parts.length >= 5 && parts[0] === 'media') {
+        const owner = parts[1]
+        const repo = parts[2]
+        const ref = parts[3]
+        const path = parts.slice(4).join('/')
+        return {
+          candidates: [
+            { url: input, label: 'GitHub media (LFS-friendly)' },
+            { url: `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${path}`, label: 'GitHub raw' },
+            { url: `https://cdn.jsdelivr.net/gh/${owner}/${repo}@${ref}/${path}`, label: 'jsDelivr CDN' },
+          ],
+        }
+      }
+      return fallback(input)
+    }
+
+    return fallback(input)
   } catch {
-    return { url: input }
+    return fallback(input)
   }
+}
+
+function githubCandidates(owner: string, repo: string, ref: string, path: string): UrlCandidate[] {
+  return [
+    { url: `https://media.githubusercontent.com/media/${owner}/${repo}/${ref}/${path}`, label: 'GitHub media (LFS-friendly)' },
+    { url: `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${path}`, label: 'GitHub raw' },
+    { url: `https://cdn.jsdelivr.net/gh/${owner}/${repo}@${ref}/${path}`, label: 'jsDelivr CDN' },
+  ]
 }
 
 export async function readMetadata(source: ParquetSource): Promise<ParquetMeta> {

@@ -79,18 +79,60 @@ async function loadFromUrl(url: string) {
     setState({
       loadState: {
         kind: 'loading',
-        message: `${normalized.note ? normalized.note + '\n' : ''}正在打开 URL: ${normalized.url}`,
+        message: `${normalized.note ? normalized.note + '\n' : ''}准备打开 URL…`,
       },
       source: null,
       pageIndex: 0,
       currentRows: [],
     })
-    const s = await makeSourceFromUrl(normalized.url)
-    setState({ source: s })
-    await refreshMetadataAndFirstPage()
+
+    const errors: Array<{ url: string; error: string }> = []
+    const candidates = normalized.candidates.length ? normalized.candidates : [{ url: trimmed, label: 'Direct URL' }]
+
+    for (let i = 0; i < candidates.length; i++) {
+      const c = candidates[i]
+      setState({
+        loadState: {
+          kind: 'loading',
+          message: `${normalized.note ? normalized.note + '\n' : ''}尝试 ${i + 1}/${candidates.length}: ${c.label}\n${c.url}`,
+        },
+        source: null,
+      })
+
+      try {
+        const s = await makeSourceFromUrl(c.url)
+        setState({ source: s })
+        await refreshMetadataAndFirstPage()
+        return
+      } catch (e) {
+        errors.push({ url: c.url, error: formatError(e) })
+      }
+    }
+
+    throw new Error(formatUrlAttemptErrors(errors))
   } catch (e) {
     setState({ loadState: { kind: 'error', message: formatError(e) } })
   }
+}
+
+function formatUrlAttemptErrors(errors: Array<{ url: string; error: string }>): string {
+  const lines: string[] = []
+  lines.push('打开失败：无法从该 URL 读取 Parquet。')
+  lines.push('已尝试以下直链（按顺序）：')
+  for (const item of errors) {
+    lines.push(`- ${item.url}`)
+  }
+  lines.push('')
+  lines.push('可能原因：')
+  lines.push('- 目标不是 Parquet 二进制（例如 Git LFS 指针文本）')
+  lines.push('- CORS 被拒绝，或服务器不支持 HTTP Range')
+  lines.push('- 网络被阻断或文件过大导致浏览器内存不足')
+  lines.push('')
+  lines.push('详细错误：')
+  for (const item of errors) {
+    lines.push(`\nURL: ${item.url}\n${item.error}`)
+  }
+  return lines.join('\n')
 }
 
 async function refreshMetadataAndFirstPage() {
