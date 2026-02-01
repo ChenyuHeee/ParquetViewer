@@ -1,4 +1,4 @@
-# Parquet Viewer（纯前端 · GitHub Pages）
+# Parquet Viewer
 
 [![Deploy to GitHub Pages](https://github.com/ChenyuHeee/ParquetViewer/actions/workflows/deploy.yml/badge.svg)](https://github.com/ChenyuHeee/ParquetViewer/actions/workflows/deploy.yml)
 [![GitHub Pages](https://img.shields.io/badge/GitHub%20Pages-live-brightgreen)](https://chenyuheee.github.io/ParquetViewer/)
@@ -73,24 +73,6 @@ Parquet 文件列多时（尤其是上百列），一次性渲染会明显变卡
 ### 为什么打开某些远程 URL 失败？
 
 多半是 CORS 或 Range 支持问题。这不是本项目能绕过的限制；建议把文件下载到本地再打开。
-
-## 开发者：本地开发
-
-环境：Node.js 20+（建议）
-
-```bash
-npm install
-npm run dev
-```
-
-## 部署到 GitHub Pages
-
-本仓库已内置 GitHub Actions 自动部署。
-
-1. 推送到 `main` 分支
-2. 打开 GitHub 仓库设置：Settings → Pages
-3. Build and deployment 选择 “GitHub Actions”
-4. 等待 Actions 运行完成，即可通过 Pages 访问
 
 ## 技术栈
 
