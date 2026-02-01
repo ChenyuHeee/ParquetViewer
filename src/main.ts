@@ -131,6 +131,15 @@ function clearAll() {
 }
 
 function render() {
+  const busy = isLoading()
+  const disableWhenBusy = busy ? 'disabled' : ''
+  const statusText =
+    loadState.kind === 'idle'
+      ? '等待打开文件…'
+      : loadState.kind === 'ready'
+        ? loadState.message || '就绪'
+        : loadState.message
+
   app.innerHTML = `
     <div class="container">
       <div class="header">
@@ -147,9 +156,9 @@ function render() {
       <div class="grid">
         <div class="panel">
           <div class="row">
-            <button class="btn primary" id="pickFileBtn">选择本地 .parquet</button>
+            <button class="btn primary" id="pickFileBtn" ${disableWhenBusy}>选择本地 .parquet</button>
             <input id="fileInput" type="file" accept=".parquet,application/octet-stream" style="display:none" />
-            <button class="btn danger" id="clearBtn" ${source ? '' : 'disabled'}>清空</button>
+            <button class="btn danger" id="clearBtn" ${source && !busy ? '' : 'disabled'}>清空</button>
           </div>
 
           <div class="row">
@@ -163,9 +172,9 @@ function render() {
               <label>也可以打开远程 URL（需要 CORS + 支持 Range）</label>
               <div class="row" style="width:100%">
                 <div style="flex:1; min-width: 220px;">
-                  <input type="text" id="urlInput" placeholder="https://.../file.parquet" />
+                  <input type="text" id="urlInput" placeholder="https://.../file.parquet" ${busy ? 'disabled' : ''} />
                 </div>
-                <button class="btn" id="openUrlBtn">打开 URL</button>
+                <button class="btn" id="openUrlBtn" ${disableWhenBusy}>打开 URL</button>
               </div>
             </div>
           </div>
@@ -173,18 +182,18 @@ function render() {
           <div class="row">
             <div style="flex:1; min-width: 160px;">
               <label>每页行数</label>
-              <input type="number" id="pageSizeInput" min="10" max="5000" value="${pageSize}" />
+              <input type="number" id="pageSizeInput" min="10" max="5000" value="${pageSize}" ${busy ? 'disabled' : ''} />
             </div>
             <div style="flex:1; min-width: 160px;">
-              <label>列名搜索</label>
-              <input type="text" id="colSearchInput" placeholder="输入关键字" value="${escapeHtml(columnSearch)}" />
+              <label>列名搜索（${selectedColumns.size}/${allColumns.length || 0} 已选）</label>
+              <input type="text" id="colSearchInput" placeholder="输入关键字" value="${escapeHtml(columnSearch)}" ${busy ? 'disabled' : ''} />
             </div>
           </div>
 
           <div class="row">
-            <button class="btn" id="selectAllBtn" ${allColumns.length ? '' : 'disabled'}>全选</button>
-            <button class="btn" id="selectNoneBtn" ${allColumns.length ? '' : 'disabled'}>全不选</button>
-            <button class="btn" id="reloadBtn" ${source ? '' : 'disabled'}>刷新当前页</button>
+            <button class="btn" id="selectAllBtn" ${allColumns.length && !busy ? '' : 'disabled'}>全选</button>
+            <button class="btn" id="selectNoneBtn" ${allColumns.length && !busy ? '' : 'disabled'}>全不选</button>
+            <button class="btn" id="reloadBtn" ${source && !busy ? '' : 'disabled'}>刷新当前页</button>
           </div>
 
           <div class="row">
@@ -196,24 +205,28 @@ function render() {
 
           <div class="row">
             <div style="width:100%">
-              <label>Schema（简化显示）</label>
-              <div class="status" style="max-height: 180px; overflow:auto; border:1px solid var(--border); border-radius:12px; padding:10px;">${escapeHtml(schemaText || '')}</div>
+              <details class="details" ${schemaText ? '' : 'open'}>
+                <summary>Schema（点击展开/收起）</summary>
+                <div class="details-body">${escapeHtml(schemaText || '')}</div>
+              </details>
             </div>
           </div>
 
           <div class="row">
-            <div class="status ${loadState.kind === 'error' ? 'error' : loadState.kind === 'ready' ? 'ok' : ''}">${escapeHtml(loadState.kind === 'idle' ? '等待打开文件…' : loadState.message)}</div>
+            <div class="status ${loadState.kind === 'error' ? 'error' : loadState.kind === 'ready' ? 'ok' : ''}">
+              ${busy ? '<span class="spinner-sm" aria-hidden="true"></span>' : ''}${escapeHtml(statusText)}
+            </div>
           </div>
         </div>
 
-        <div class="panel">
+        <div class="panel" aria-busy="${busy ? 'true' : 'false'}">
           <div class="row" style="justify-content: space-between; width:100%">
             <div class="row">
-              <button class="btn" id="prevBtn" ${canPrev() ? '' : 'disabled'}>上一页</button>
-              <button class="btn" id="nextBtn" ${canNext() ? '' : 'disabled'}>下一页</button>
+              <button class="btn" id="prevBtn" ${canPrev() && !busy ? '' : 'disabled'}>上一页</button>
+              <button class="btn" id="nextBtn" ${canNext() && !busy ? '' : 'disabled'}>下一页</button>
             </div>
             <div class="row">
-              <button class="btn" id="downloadCsvBtn" ${currentRows.length ? '' : 'disabled'}>导出当前页 CSV</button>
+              <button class="btn" id="downloadCsvBtn" ${currentRows.length && !busy ? '' : 'disabled'}>导出当前页 CSV</button>
               <span class="muted">${pageRangeText()}</span>
             </div>
           </div>
@@ -223,6 +236,8 @@ function render() {
               ${renderTable()}
             </div>
           </div>
+
+          ${busy ? renderLoadingOverlay(loadState.kind === 'loading' ? loadState.message : '加载中…') : ''}
         </div>
       </div>
     </div>
@@ -339,6 +354,21 @@ function renderColumnsBox() {
       setState({ selectedColumns: next })
     })
   })
+}
+
+function isLoading(): boolean {
+  return loadState.kind === 'loading'
+}
+
+function renderLoadingOverlay(message: string): string {
+  return `
+    <div class="loading-overlay" role="status" aria-live="polite">
+      <div class="loading-card">
+        <div class="spinner" aria-hidden="true"></div>
+        <div class="status">${escapeHtml(message || '加载中…')}</div>
+      </div>
+    </div>
+  `
 }
 
 function canPrev(): boolean {
