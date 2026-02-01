@@ -2,6 +2,7 @@ import './style.css'
 import {
   asyncBufferFromBrowserFile,
   makeSourceFromUrl,
+  normalizeParquetUrl,
   readMetadata,
   readRows,
   type ParquetSource,
@@ -74,13 +75,17 @@ async function loadFromUrl(url: string) {
   try {
     const trimmed = url.trim()
     if (!trimmed) return
+    const normalized = normalizeParquetUrl(trimmed)
     setState({
-      loadState: { kind: 'loading', message: `正在打开 URL: ${trimmed}` },
+      loadState: {
+        kind: 'loading',
+        message: `${normalized.note ? normalized.note + '\n' : ''}正在打开 URL: ${normalized.url}`,
+      },
       source: null,
       pageIndex: 0,
       currentRows: [],
     })
-    const s = await makeSourceFromUrl(trimmed)
+    const s = await makeSourceFromUrl(normalized.url)
     setState({ source: s })
     await refreshMetadataAndFirstPage()
   } catch (e) {
@@ -172,7 +177,7 @@ function render() {
               <label>也可以打开远程 URL（需要 CORS + 支持 Range）</label>
               <div class="row" style="width:100%">
                 <div style="flex:1; min-width: 220px;">
-                  <input type="text" id="urlInput" placeholder="https://.../file.parquet" ${busy ? 'disabled' : ''} />
+                  <input type="text" id="urlInput" placeholder="https://.../file.parquet（支持粘贴 GitHub blob 链接）" ${busy ? 'disabled' : ''} />
                 </div>
                 <button class="btn" id="openUrlBtn" ${disableWhenBusy}>打开 URL</button>
               </div>

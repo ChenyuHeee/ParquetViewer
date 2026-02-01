@@ -36,6 +36,43 @@ export async function makeSourceFromUrl(url: string): Promise<ParquetSource> {
   return { kind: 'url', label: url, url, file }
 }
 
+export function normalizeParquetUrl(input: string): { url: string; note?: string } {
+  // Common case: GitHub file page URL ("blob") is HTML, not the raw bytes.
+  // Convert it to a raw.githubusercontent.com URL which is fetchable.
+  try {
+    const u = new URL(input)
+    if (u.hostname === 'github.com') {
+      const parts = u.pathname.split('/').filter(Boolean)
+      // /{owner}/{repo}/blob/{ref}/{path...}
+      if (parts.length >= 5 && parts[2] === 'blob') {
+        const owner = parts[0]
+        const repo = parts[1]
+        const ref = parts[3]
+        const path = parts.slice(4).join('/')
+        return {
+          url: `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${path}`,
+          note: '已将 GitHub blob 链接转换为 raw 直链',
+        }
+      }
+      // /{owner}/{repo}/raw/{ref}/{path...}
+      if (parts.length >= 5 && parts[2] === 'raw') {
+        const owner = parts[0]
+        const repo = parts[1]
+        const ref = parts[3]
+        const path = parts.slice(4).join('/')
+        return {
+          url: `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${path}`,
+          note: '已将 GitHub raw 链接标准化为 raw.githubusercontent.com',
+        }
+      }
+    }
+    // Some users paste "?raw=1" URLs from GitHub UI; keep it as-is unless it's a blob link.
+    return { url: input }
+  } catch {
+    return { url: input }
+  }
+}
+
 export async function readMetadata(source: ParquetSource): Promise<ParquetMeta> {
   const metadata = await parquetMetadataAsync(source.file)
   const numRows = Number(metadata.num_rows)

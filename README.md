@@ -56,6 +56,11 @@ A lightweight, serverless Parquet viewer that runs entirely in your browser.
 
 在左侧输入 `https://.../file.parquet` 并点击“打开 URL”。
 
+也支持直接粘贴 GitHub 仓库中文件的页面链接（`.../blob/...`），页面会自动转换为 `raw.githubusercontent.com` 直链后读取。
+
+示例：
+- `https://github.com/ChenyuHeee/train-ticket-dataset/blob/main/dataset_A/2026-01-28/trace-parquet/trace_jaeger-span_2026-01-28_08-00-00.parquet`
+
 注意：这依赖目标站点允许跨域（CORS），并且很多情况下需要支持 Range 请求，否则可能无法读取或会很慢。
 
 ## 常见问题（FAQ）
